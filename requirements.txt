@@ -1,0 +1,24 @@
+# DGA恶意域名检测项目依赖包
+
+# 深度学习框架
+torch>=1.8.0
+torchvision>=0.9.0
+torchaudio>=0.8.0
+
+# 数据处理
+numpy>=1.19.0
+pandas>=1.2.0
+scikit-learn>=1.0.0
+
+# 可视化
+matplotlib>=3.3.0
+seaborn>=0.11.0
+
+# 工具包
+tqdm>=4.60.0
+pickle5
+
+# 可选包（用于更高级的功能）
+transformers>=4.0.0
+datasets>=2.0.0
+tensorboardX>=2.0.0
