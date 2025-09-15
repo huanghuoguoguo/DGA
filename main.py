@@ -32,7 +32,7 @@ def main():
     # 训练命令
     train_parser = subparsers.add_parser('train', help='训练模型')
     train_parser.add_argument('--model', type=str, default='cnn',
-                             choices=['cnn', 'lstm', 'mamba', 'moe', 'mambaformer'],
+                             choices=['cnn', 'lstm', 'mamba', 'moe', 'improved_moe', 'simplified_moe', 'mambaformer'],
                              help='要训练的模型类型')
     train_parser.add_argument('--quick', action='store_true',
                              help='快速测试模式（5个epoch）')

@@ -50,38 +50,68 @@ def create_data_loaders(dataset_path: str = './data/processed/small_dga_dataset.
     
     # 加载数据集
     dataset = load_dataset(dataset_path)
-    X, y = dataset['X'], dataset['y']
     
-    # 创建数据集对象
-    full_dataset = DGADataset(X, y)
-    
-    # 计算划分大小
-    total_size = len(full_dataset)
-    train_size = int(train_ratio * total_size)
-    val_size = int(val_ratio * total_size)
-    test_size = total_size - train_size - val_size
-    
-    # 数据集划分
-    train_dataset, val_dataset, test_dataset = random_split(
-        full_dataset, [train_size, val_size, test_size],
-        generator=torch.Generator().manual_seed(random_seed)
-    )
+    # 检查是否是多分类数据集（已预分割）
+    if 'X_train' in dataset:
+        # 多分类数据集已经预分割
+        X_train, y_train = dataset['X_train'], dataset['y_train']
+        X_val, y_val = dataset['X_val'], dataset['y_val']
+        X_test, y_test = dataset['X_test'], dataset['y_test']
+        
+        # 创建数据集对象
+        train_dataset = DGADataset(X_train, y_train)
+        val_dataset = DGADataset(X_val, y_val)
+        test_dataset = DGADataset(X_test, y_test)
+        
+        # 数据集信息
+        dataset_info = {
+            'vocab_size': dataset['vocab_size'],
+            'max_length': dataset.get('max_length', X_train.shape[1]),
+            'num_classes': dataset.get('num_classes', 2),
+            'class_names': dataset.get('class_names', ['benign', 'malicious']),
+            'total_samples': len(X_train) + len(X_val) + len(X_test),
+            'train_samples': len(train_dataset),
+            'val_samples': len(val_dataset),
+            'test_samples': len(test_dataset),
+            'class_distribution': np.bincount(y_train)
+        }
+        
+    else:
+        # 二分类数据集需要分割
+        X, y = dataset['X'], dataset['y']
+        
+        # 创建数据集对象
+        full_dataset = DGADataset(X, y)
+        
+        # 计算划分大小
+        total_size = len(full_dataset)
+        train_size = int(train_ratio * total_size)
+        val_size = int(val_ratio * total_size)
+        test_size = total_size - train_size - val_size
+        
+        # 数据集划分
+        train_dataset, val_dataset, test_dataset = random_split(
+            full_dataset, [train_size, val_size, test_size],
+            generator=torch.Generator().manual_seed(random_seed)
+        )
+        
+        # 数据集信息
+        dataset_info = {
+            'vocab_size': dataset['vocab_size'],
+            'max_length': dataset.get('max_length', X.shape[1]),
+            'num_classes': 2,
+            'class_names': ['benign', 'malicious'],
+            'total_samples': total_size,
+            'train_samples': len(train_dataset),
+            'val_samples': len(val_dataset),
+            'test_samples': len(test_dataset),
+            'class_distribution': np.bincount(y)
+        }
     
     # 创建数据加载器
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    
-    # 数据集信息
-    dataset_info = {
-        'vocab_size': dataset['vocab_size'],
-        'max_length': dataset.get('max_length', X.shape[1]),
-        'total_samples': total_size,
-        'train_samples': len(train_dataset),
-        'val_samples': len(val_dataset),
-        'test_samples': len(test_dataset),
-        'class_distribution': np.bincount(y)
-    }
     
     return train_loader, val_loader, test_loader, dataset_info
 
