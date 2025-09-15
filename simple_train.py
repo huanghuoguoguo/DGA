@@ -140,7 +140,8 @@ def train_model(model_name: str, quick_test: bool = False, dataset_size: str = '
         'xlarge': './data/processed/xlarge_dga_dataset.pkl',
         'small_multiclass': './data/processed/small_multiclass_dga_dataset.pkl',
         'medium_multiclass': './data/processed/medium_multiclass_dga_dataset.pkl',
-        'large_multiclass': './data/processed/large_multiclass_dga_dataset.pkl'
+        'large_multiclass': './data/processed/large_multiclass_dga_dataset.pkl',
+        'xlarge_multiclass': './data/processed/xlarge_multiclass_dga_dataset.pkl'
     }
     
     dataset_path = dataset_paths.get(dataset_size, config.data.dataset_path)
@@ -261,7 +262,7 @@ def main():
     parser.add_argument('--all', action='store_true', 
                        help='训练所有模型')
     parser.add_argument('--dataset', type=str, default='small', 
-                        choices=['small', 'medium', 'large', 'xlarge', 'small_multiclass', 'medium_multiclass', 'large_multiclass'],
+                        choices=['small', 'medium', 'large', 'xlarge', 'small_multiclass', 'medium_multiclass', 'large_multiclass', 'xlarge_multiclass'],
                         help='数据集大小')
     
     args = parser.parse_args()
