@@ -1,0 +1,101 @@
+# 小样本多分类测试配置文件
+# 使用小型多分类数据集训练所有模型
+
+[dataset]
+# 数据集配置
+type = "small_multiclass"  # 小型多分类数据集 (16类)
+path = "./data/processed/small_multiclass_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数
+epochs = 12  # 多分类任务需要更多轮数
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 4  # 多分类任务增加patience
+min_delta = 0.005
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# 启用所有可用模型进行多分类测试
+
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = true
+params = { d_model = 128, dropout = 0.1 }
+
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = true
+params = { d_model = 64, hidden_size = 64, num_layers = 1, dropout = 0.1 }
+
+[models.tcbam]
+module = "models.implementations.tcbam_models"
+class_name = "TCBAMModel"
+enabled = true
+params = { embed_dim = 128, hidden_dim = 128, num_heads = 8, num_layers = 2, dropout = 0.1 }
+
+[models.moe]
+module = "models.implementations.homogeneous_moe_model"
+class_name = "HomogeneousMoEModel"
+enabled = true
+params = { d_model = 128, num_experts = 4, dropout = 0.1, num_layers = 2 }
+
+[models.bilstm]
+module = "models.implementations.bilstm_attention_model"
+class_name = "LSTMModel"
+enabled = true
+params = { d_model = 128, hidden_size = 128, dropout = 0.1 }
+
+[models.bigru]
+module = "models.implementations.bigru_attention_model"
+class_name = "BiGRUAttentionModel"
+enabled = true
+params = { d_model = 128, hidden_size = 128, dropout = 0.1 }
+
+# 暂时禁用Mamba模型（缺少zeta依赖）
+[models.mamba]
+module = "models.implementations.mamba_model"
+class_name = "MambaModel"
+enabled = false
+params = { d_model = 128, d_state = 16, d_conv = 4, expand = 2 }
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/multiclass_test_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "small_multiclass_experiment"
+seed = 42
+deterministic = true
+benchmark = false
