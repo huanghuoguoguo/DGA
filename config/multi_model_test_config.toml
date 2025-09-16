@@ -1,0 +1,83 @@
+# 多模型测试配置文件
+# 同时训练CNN和LSTM模型进行对比
+
+[dataset]
+# 数据集配置
+type = "small_binary"  # 小型二分类数据集
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数
+epochs = 8  # 快速测试
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 3
+min_delta = 0.001
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# 启用CNN和LSTM模型进行对比测试
+
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = true
+params = { d_model = 128, dropout = 0.1 }
+
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = true
+params = { d_model = 128, hidden_size = 128, num_layers = 2, dropout = 0.1 }
+
+# 其他模型暂时禁用
+[models.tcbam]
+module = "models.implementations.tcbam_models"
+class_name = "TCBAMModel"
+enabled = false
+params = { embed_dim = 128, hidden_dim = 128, num_heads = 8, num_layers = 2, dropout = 0.1 }
+
+[models.moe]
+module = "models.implementations.homogeneous_moe_model"
+class_name = "HomogeneousMoEModel"
+enabled = false
+params = { d_model = 128, num_experts = 4, expert_dim = 128, dropout = 0.1 }
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/multi_model_test_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "multi_model_comparison"
+seed = 42
+deterministic = true
+benchmark = false

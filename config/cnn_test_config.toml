@@ -1,0 +1,77 @@
+# CNN模型测试配置文件
+# 使用小型二分类数据集进行快速验证
+
+[dataset]
+# 数据集配置
+type = "small_binary"  # 小型二分类数据集
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数
+epochs = 10  # 快速测试，使用较少轮数
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"  # adam, sgd, adamw
+scheduler = "plateau"  # plateau, step, cosine
+
+# 早停机制
+early_stopping = true
+patience = 3  # 较小的patience用于快速测试
+min_delta = 0.001
+monitor = "val_accuracy"  # val_accuracy, val_loss
+mode = "max"  # max for accuracy, min for loss
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# 模型配置 - 只启用CNN模型进行测试
+
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = true
+params = { d_model = 128, dropout = 0.1 }
+
+# 其他模型暂时禁用
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = false
+params = { embed_dim = 128, hidden_dim = 128, num_layers = 2, dropout = 0.1 }
+
+[models.tcbam]
+module = "models.implementations.tcbam_models"
+class_name = "TCBAMModel"
+enabled = false
+params = { embed_dim = 128, hidden_dim = 128, num_heads = 8, num_layers = 2, dropout = 0.1 }
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/cnn_test_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"  # auto, cpu, cuda, cuda:0
+use_amp = false  # 混合精度训练
+
+[experiment]
+# 实验配置
+name = "cnn_test_experiment"
+seed = 42
+deterministic = true
+benchmark = false

@@ -1,37 +1,40 @@
-# DGA恶意域名检测 - 重构版
+# DGA恶意域名检测 - 配置驱动训练框架
 
 ## 🎯 项目简介
 
-本项目实现了多种深度学习架构用于DGA（Domain Generation Algorithm）恶意域名检测，包括CNN、LSTM、Mamba和MoE（混合专家）模型。项目已经过重构，具有清晰的模块化结构和简化的使用流程。
+本项目实现了基于配置文件的热插拔DGA（Domain Generation Algorithm）恶意域名检测训练框架，支持多种深度学习架构，包括CNN、LSTM、TCBAM、MoE（混合专家）和Mamba模型。项目采用现代化的配置驱动架构，支持模型热插拔和统一训练流程。
 
 ## 🏗️ 项目结构
 
 ```
 DGA/
 ├── core/                           # 核心模块
-│   ├── __init__.py
 │   ├── dataset.py                  # 统一数据处理
-│   └── base_model.py               # 模型基类和训练器
+│   ├── config_manager.py           # 配置管理器
+│   ├── model_loader.py             # 动态模型加载器
+│   ├── data_builder.py             # 数据集构建器
+│   └── base_model.py               # 模型基类
 ├── models/                         # 模型定义
-│   ├── base/                       # 基础模型组件
 │   └── implementations/            # 具体模型实现
 │       ├── cnn_model.py           # CNN模型
-│       ├── lstm_model.py          # BiLSTM+Attention模型
-│       ├── mamba_model.py         # Mamba模型（状态空间模型）
-│       └── moe_model.py           # 混合专家模型
+│       ├── simple_lstm_model.py   # LSTM模型
+│       ├── tcbam_models.py        # TCBAM模型
+│       ├── homogeneous_moe_model.py # MoE模型
+│       └── mamba_model.py         # Mamba模型
 ├── config/                         # 配置管理
-│   └── config.py                  # 统一配置
+│   ├── config.py                  # 基础配置
+│   └── train_config.toml          # 🔧 训练配置文件
 ├── data/                          # 数据目录
-│   ├── processed/                 # 预处理后的数据
+│   └── processed/                 # 预处理后的数据
+│       ├── small_binary_dga_dataset.pkl
+│       ├── large_binary_dga_dataset.pkl
+│       ├── small_multiclass_dga_dataset.pkl
+│       └── large_multiclass_dga_dataset.pkl
+├── results/                       # 实验结果
 │   ├── models/                    # 训练好的模型
-│   ├── results/                   # 实验结果
-│   └── raw/                       # 原始数据
-├── scripts/                       # 脚本目录
-│   ├── train/                     # 训练脚本
-│   ├── eval/                      # 评估脚本
-│   └── analysis/                  # 分析脚本
-├── simple_train.py                # 🚀 简化训练脚本
-├── quick_test.py                  # 🧪 快速测试脚本
+│   └── experiments/               # 实验数据
+├── train.py                       # 🚀 统一训练框架
+├── main.py                        # 🎮 项目入口
 └── README.md                      # 项目说明
 ```
 
@@ -47,146 +50,229 @@ conda activate DGAenv
 python -c "import torch; print(f'PyTorch版本: {torch.__version__}')"
 ```
 
-### 2. 项目验证
+### 2. 配置文件训练（推荐）
 
 ```bash
-# 运行快速测试，验证所有组件
-python quick_test.py
+# 使用默认配置训练
+python train.py
+
+# 使用自定义配置文件
+python train.py --config ./config/train_config.toml
+
+# 训练特定模型
+python train.py --models lstm cnn
 ```
 
-### 3. 快速训练测试
+### 3. 通过统一入口训练
 
 ```bash
-# 快速训练CNN模型（5个epoch）
-python simple_train.py --model cnn --quick
-
-# 快速训练Mamba模型
-python simple_train.py --model mamba --quick
+# 通过main.py训练
+python main.py train --config ./config/train_config.toml
+python main.py train --models lstm tcbam
 ```
 
-### 4. 完整训练
+### 4. 数据集构建
 
 ```bash
-# 训练单个模型
-python simple_train.py --model cnn
-python simple_train.py --model lstm
-python simple_train.py --model mamba
-python simple_train.py --model moe
-
-# 训练所有模型
-python simple_train.py --all
+# 构建统一格式数据集
+python core/data_builder.py
 ```
 
 ## 📊 支持的模型
 
-| 模型 | 描述 | 优势 |
-|------|------|------|
-| **CNN** | 多尺度卷积神经网络 | 速度快，轻量级，局部特征提取 |
-| **LSTM** | BiLSTM+注意力机制 | 序列建模强，准确率高 |
-| **Mamba** | 状态空间模型 | 线性复杂度，长序列建模，选择性机制 |
-| **MoE** | 混合专家模型 | 专家协作，智能选择，优势互补 |
+| 模型 | 配置名 | 描述 | 优势 |
+|------|--------|------|------|
+| **CNN** | `cnn` | 多尺度卷积神经网络 | 速度快，轻量级，局部特征提取 |
+| **LSTM** | `lstm` | 简单LSTM网络 | 序列建模，准确率高 |
+| **TCBAM** | `tcbam` | 时间卷积+注意力机制 | 时序特征+注意力，性能优秀 |
+| **MoE** | `moe` | 同构混合专家模型 | 专家协作，智能选择，优势互补 |
+| **Mamba** | `mamba` | 状态空间模型 | 线性复杂度，长序列建模 |
+
+## 🔧 配置文件说明
+
+### 训练配置 (`config/train_config.toml`)
+
+```toml
+[dataset]
+type = "small_binary"  # 数据集类型
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+
+[training]
+epochs = 20
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 5
+min_delta = 0.001
+monitor = "val_accuracy"
+mode = "max"
+
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = true
+params = { embed_dim = 128, hidden_dim = 128, num_layers = 2, dropout = 0.1 }
+
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = true
+params = { embed_dim = 128, num_filters = 128, filter_sizes = [2, 3, 4], dropout = 0.1 }
+```
 
 ## 💡 核心特性
 
-### 🔧 模块化设计
-- **统一的基类**: 所有模型继承`BaseModel`，接口一致
-- **统一的训练器**: `ModelTrainer`处理所有模型的训练流程
-- **统一的数据处理**: `core.dataset`模块处理数据加载和预处理
-- **统一的配置管理**: `config.config`管理所有超参数
+### 🔧 配置驱动架构
+- **TOML配置文件**: 所有训练参数通过配置文件管理
+- **热插拔模型**: 通过配置文件动态加载模型，无需修改代码
+- **模块化设计**: 配置管理、模型加载、训练流程完全分离
+- **统一接口**: 所有模型使用相同的训练和评估接口
 
-### 📦 简化的使用流程
-- **一键训练**: `simple_train.py`脚本支持训练任意模型
-- **快速测试**: `quick_test.py`验证项目完整性
-- **自动保存**: 模型和结果自动保存到指定位置
-- **进度显示**: 训练过程带有进度条和详细信息
+### 📦 智能模型加载
+- **动态导入**: 根据配置文件动态导入模型类
+- **参数验证**: 自动验证模型参数和配置格式
+- **错误处理**: 完善的错误处理和用户友好的错误信息
+- **缓存机制**: 模型类缓存，提高加载效率
 
 ### 🛡️ 鲁棒性设计
-- **错误处理**: 完善的异常处理和用户友好的错误信息
-- **路径管理**: 自动创建必要目录，支持多种数据集路径
+- **早停机制**: 可配置的早停策略，防止过拟合
+- **学习率调度**: 支持多种学习率调度策略
+- **梯度裁剪**: 防止梯度爆炸
 - **设备自适应**: 自动检测和使用可用的计算设备
 
-## 📈 性能表现
+## 📈 数据集支持
 
-基于之前的实验结果：
+### 统一格式数据集
 
-| 模型 | 准确率 | F1分数 | 推理时间 | 参数量 |
-|------|--------|--------|----------|--------|
-| CNN | 94.44% | 0.944 | 2.66ms | 195K |
-| BiLSTM+Attention | 95.28% | 0.953 | 9.55ms | 689K |
-| Mamba (预测) | ~94.5% | ~0.945 | ~8.5ms | ~450K |
-| MoE | 94.44% | 0.944 | 9.17ms | 888K |
+| 数据集 | 样本数 | 类型 | 分割比例 |
+|--------|--------|------|----------|
+| `small_binary` | 10K | 二分类 | 8:1:1 |
+| `large_binary` | 100K | 二分类 | 8:1:1 |
+| `small_multiclass` | 10K | 16分类 | 8:1:1 |
+| `large_multiclass` | 100K | 16分类 | 8:1:1 |
+
+### 数据集特点
+- **格式统一**: 所有数据集使用相同的格式和接口
+- **标准分割**: 训练80%，验证10%，测试10%
+- **分层抽样**: 确保各集合中类别分布一致
+- **完整元信息**: 包含词汇表、类别分布、家族信息等
 
 ## 🔬 技术亮点
 
-### Mamba模型
-- **线性复杂度**: O(L) vs Transformer的O(L²)
-- **选择性机制**: 动态选择重要信息
-- **状态空间模型**: 高效的长序列建模
+### 配置驱动训练
+- **零代码修改**: 通过配置文件控制所有训练参数
+- **模型热插拔**: 新增模型只需修改配置文件
+- **实验管理**: 不同配置文件对应不同实验
+- **可重现性**: 配置文件确保实验的完全可重现
 
-### MoE架构
-- **专家混合**: 结合不同模型的优势
-- **门控网络**: 智能选择最适合的专家
-- **负载均衡**: 确保专家的合理使用
+### 统一训练框架
+- **TrainingFramework**: 统一的训练流程管理
+- **ConfigManager**: 配置文件加载和验证
+- **ModelLoader**: 动态模型加载和实例化
+- **EarlyStopping**: 可配置的早停机制
 
 ## 📝 使用示例
 
-```python
-# 训练Mamba模型
-python simple_train.py --model mamba
+### 基础训练
+```bash
+# 使用默认配置训练所有启用的模型
+python train.py
 
-# 快速测试所有模型
-python simple_train.py --all --quick
+# 训练特定模型
+python train.py --models lstm cnn
 
-# 项目完整性检查
-python quick_test.py
+# 使用自定义配置
+python train.py --config my_config.toml
 ```
 
-## 🔧 配置说明
+### 配置文件定制
+```toml
+# 启用特定模型
+[models.lstm]
+enabled = true
 
-主要配置在 `config/config.py` 中：
+[models.cnn]
+enabled = false  # 禁用CNN模型
 
-```python
-@dataclass
-class TrainingConfig:
-    num_epochs: int = 20
-    batch_size: int = 32
-    learning_rate: float = 0.001
-    weight_decay: float = 1e-4
-    patience: int = 5
-    random_seed: int = 42
+# 调整训练参数
+[training]
+epochs = 50
+learning_rate = 0.0005
+batch_size = 64
+```
+
+### 新增模型
+```toml
+# 在配置文件中添加新模型
+[models.my_model]
+module = "models.implementations.my_model"
+class_name = "MyModel"
+enabled = true
+params = { param1 = 128, param2 = 0.1 }
 ```
 
 ## 📊 输出文件
 
 训练完成后，会生成以下文件：
 
-- **模型权重**: `data/models/best_{model_name}_model.pth`
-- **实验结果**: `data/results/{model_name}_results.pkl`
-- **训练日志**: 控制台输出包含详细的训练信息
+- **模型权重**: `results/models/{model_name}_best.pth`
+- **实验结果**: `results/experiments/{experiment_name}_results.pkl`
+- **训练日志**: `logs/training.log`
+- **配置备份**: 自动保存使用的配置文件
 
-## 🎯 下一步计划
+## 🎯 项目优势
 
-1. **模型优化**: 超参数调优和架构改进
-2. **数据扩展**: 增加更多DGA家族数据
-3. **性能分析**: 详细的模型对比和分析
-4. **部署优化**: 模型压缩和推理加速
+### 相比传统训练脚本
+- ✅ **配置驱动**: 无需修改代码即可调整参数
+- ✅ **模型解耦**: 训练框架与具体模型完全分离
+- ✅ **热插拔**: 支持动态添加新模型
+- ✅ **统一接口**: 所有模型使用相同的训练流程
+- ✅ **实验管理**: 配置文件即实验记录
+
+### 开发效率提升
+- 🚀 **快速实验**: 修改配置文件即可开始新实验
+- 🔧 **易于维护**: 清晰的模块分离，便于维护和扩展
+- 📊 **结果对比**: 统一的结果格式，便于对比分析
+- 🎮 **用户友好**: 简单的命令行接口，易于使用
+
+## 🔧 扩展指南
+
+### 添加新模型
+1. 在 `models/implementations/` 中实现模型类
+2. 在配置文件中添加模型配置
+3. 运行训练即可，无需修改训练代码
+
+### 自定义数据集
+1. 实现数据集构建器
+2. 生成统一格式的数据集文件
+3. 在配置文件中指定数据集路径
+
+### 调整训练策略
+1. 修改配置文件中的训练参数
+2. 支持不同的优化器、调度器、早停策略
+3. 所有参数都可通过配置文件控制
 
 ## 📞 使用帮助
 
 如果遇到问题：
 
-1. 首先运行 `python quick_test.py` 检查环境
-2. 确认数据集文件 `data/processed/small_dga_dataset.pkl` 存在
-3. 检查PyTorch是否正确安装
-4. 使用 `--quick` 选项进行快速测试
+1. 检查配置文件格式是否正确
+2. 确认模型类路径和类名是否正确
+3. 验证数据集文件是否存在
+4. 查看日志文件获取详细错误信息
 
 ## 🎉 总结
 
 重构后的项目具有：
-- ✅ 清晰的模块化结构
-- ✅ 简化的使用流程  
-- ✅ 统一的接口设计
-- ✅ 完善的错误处理
-- ✅ 详细的文档说明
+- ✅ 配置驱动的现代化架构
+- ✅ 模型热插拔能力
+- ✅ 统一的训练和评估流程
+- ✅ 完善的错误处理和日志记录
+- ✅ 高度模块化和可扩展的设计
 
-现在可以轻松地训练和对比不同的DGA检测模型！
+现在可以通过简单的配置文件管理复杂的深度学习实验！

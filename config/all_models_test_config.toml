@@ -1,0 +1,101 @@
+# 所有模型测试配置文件 - 修复版
+# 训练所有可用模型，验证框架兼容性
+
+[dataset]
+# 数据集配置
+type = "small_binary"  # 小型二分类数据集
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数 - 快速验证模式
+epochs = 8  # 较少轮数，快速验证
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 3  # 较小patience，快速收敛
+min_delta = 0.01
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# 启用所有主要模型进行测试 - 修复参数接口
+
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = true
+params = { d_model = 128, dropout = 0.1 }
+
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = true
+params = { d_model = 64, hidden_size = 64, num_layers = 1, dropout = 0.1 }
+
+[models.tcbam]
+module = "models.implementations.tcbam_models"
+class_name = "TCBAMModel"
+enabled = true
+params = { embed_dim = 128, hidden_dim = 128, num_heads = 8, num_layers = 2, dropout = 0.1 }
+
+[models.moe]
+module = "models.implementations.homogeneous_moe_model"
+class_name = "HomogeneousMoEModel"
+enabled = true
+params = { d_model = 128, num_experts = 4, dropout = 0.1, num_layers = 2 }  # 添加num_layers参数
+
+# 暂时禁用Mamba模型（缺少zeta依赖）
+[models.mamba]
+module = "models.implementations.mamba_model"
+class_name = "MambaModel"
+enabled = false
+params = { d_model = 128, d_state = 16, d_conv = 4, expand = 2 }
+
+[models.bilstm]
+module = "models.implementations.bilstm_attention_model"
+class_name = "LSTMModel"  # 修正类名
+enabled = true
+params = { d_model = 128, hidden_size = 128, dropout = 0.1 }  # 修正参数名
+
+[models.bigru]
+module = "models.implementations.bigru_attention_model"
+class_name = "BiGRUAttentionModel"
+enabled = true
+params = { d_model = 128, hidden_size = 128, dropout = 0.1 }  # 修正参数名
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/all_models_fixed_test_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "all_models_fixed_compatibility_test"
+seed = 42
+deterministic = true
+benchmark = false

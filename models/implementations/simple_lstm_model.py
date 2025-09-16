@@ -22,34 +22,70 @@ class SimpleLSTMModel(BaseModel):
         
         self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=0)
         
-        # 单向LSTM层
+        # 双向LSTM层
         self.lstm = nn.LSTM(
             d_model, hidden_size, num_layers,
-            batch_first=True, bidirectional=False, dropout=dropout if num_layers > 1 else 0
+            batch_first=True, bidirectional=True, dropout=dropout if num_layers > 1 else 0
         )
         
-        # 简单分类器
+        # 改进的分类器
+        lstm_output_size = hidden_size * 2  # 双向LSTM
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
+            nn.Linear(lstm_output_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, num_classes)
+            nn.Linear(hidden_size, num_classes)
         )
         
         self.dropout = nn.Dropout(dropout)
+        
+        # 改进的权重初始化
+        self._init_weights()
+    
+    def _init_weights(self):
+        """改进的权重初始化"""
+        for name, param in self.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
+                # 设置遗忘门偏置为1
+                n = param.size(0)
+                param.data[(n//4):(n//2)].fill_(1)
+            elif 'weight' in name and len(param.shape) == 2:
+                nn.init.xavier_uniform_(param.data)
     
     def forward(self, x):
+        # 创建mask处理padding
+        mask = (x != 0).float()
+        lengths = mask.sum(dim=1).long()
+        
         # 嵌入 (batch, seq_len, d_model)
         x = self.embedding(x)
         x = self.dropout(x)
         
-        # LSTM (batch, seq_len, hidden_size)
-        lstm_out, (hidden, _) = self.lstm(x)
+        # 打包序列处理不同长度
+        packed_x = nn.utils.rnn.pack_padded_sequence(
+            x, lengths.cpu(), batch_first=True, enforce_sorted=False
+        )
         
-        # 使用最后一个时间步的隐藏状态
-        # hidden: (num_layers, batch, hidden_size)
-        last_hidden = hidden[-1]  # (batch, hidden_size)
+        # LSTM (batch, seq_len, hidden_size*2)
+        packed_out, (hidden, _) = self.lstm(packed_x)
+        
+        # 解包
+        lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
+        
+        # 使用最后一个有效时间步的输出
+        batch_size = x.size(0)
+        last_outputs = []
+        for i in range(batch_size):
+            last_outputs.append(lstm_out[i, lengths[i]-1, :])
+        
+        last_output = torch.stack(last_outputs)
         
         # 分类
-        logits = self.classifier(last_hidden)
+        logits = self.classifier(last_output)
         return logits

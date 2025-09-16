@@ -306,8 +306,8 @@ class HomogeneousMoEModel(nn.Module):
         # 分类
         logits = self.classifier(x)
         
-        # 始终返回logits和负载均衡损失以保持一致性
-        return logits, total_load_loss * self.load_balance_weight
+        # 只返回logits，负载均衡损失暂时忽略以保持与训练框架的兼容性
+        return logits
     
     def get_expert_utilization(self):
         """获取所有层的专家利用率"""

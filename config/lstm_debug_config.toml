@@ -1,0 +1,71 @@
+# LSTM调试配置文件
+# 专门用于调试LSTM模型训练问题
+
+[dataset]
+# 数据集配置
+type = "small_binary"  # 小型二分类数据集
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数 - 针对LSTM优化
+epochs = 20  # 增加训练轮数
+learning_rate = 0.0001  # 降低学习率
+weight_decay = 1e-5  # 减少权重衰减
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制 - 更宽松的设置
+early_stopping = true
+patience = 8  # 增加patience
+min_delta = 0.01  # 增加min_delta
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 0.5  # 减小梯度裁剪
+
+[models]
+# 只训练LSTM模型进行调试
+
+[models.lstm]
+module = "models.implementations.simple_lstm_model"
+class_name = "SimpleLSTMModel"
+enabled = true
+params = { d_model = 64, hidden_size = 64, num_layers = 1, dropout = 0.2 }  # 简化模型
+
+# 其他模型禁用
+[models.cnn]
+module = "models.implementations.cnn_model"
+class_name = "CNNModel"
+enabled = false
+params = { d_model = 128, dropout = 0.1 }
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/lstm_debug_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "lstm_debug_experiment"
+seed = 42
+deterministic = true
+benchmark = false

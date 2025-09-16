@@ -86,13 +86,10 @@ def main():
     
     # 训练命令
     train_parser = subparsers.add_parser('train', help='训练模型')
-    train_parser.add_argument('--model', type=str, default='cnn',
-                             choices=['cnn', 'lstm', 'mamba', 'moe', 'improved_moe', 'simplified_moe', 'mambaformer'],
-                             help='要训练的模型类型')
-    train_parser.add_argument('--quick', action='store_true',
-                             help='快速测试模式（5个epoch）')
-    train_parser.add_argument('--all', action='store_true',
-                             help='训练所有模型')
+    train_parser.add_argument('--config', type=str, default='./config/train_config.toml',
+                             help='配置文件路径')
+    train_parser.add_argument('--models', nargs='+', default=None,
+                             help='要训练的模型名称（默认训练所有启用的模型）')
     
     # 分析命令
     analyze_parser = subparsers.add_parser('analyze', help='分析和对比模型')
@@ -117,15 +114,10 @@ def main():
         
     elif args.command == 'train':
         print("🚀 开始训练模型...")
-        cmd = 'python simple_train.py'
+        cmd = f'python train.py --config {args.config}'
         
-        if args.all:
-            cmd += ' --all'
-        else:
-            cmd += f' --model {args.model}'
-            
-        if args.quick:
-            cmd += ' --quick'
+        if args.models:
+            cmd += f' --models {" ".join(args.models)}'
             
         os.system(cmd)
         

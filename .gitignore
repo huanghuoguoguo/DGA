@@ -5,3 +5,5 @@
 /data/training_logs/*
 /data/results/*
 /data/reports/*
+/logs/*
+/results/*
