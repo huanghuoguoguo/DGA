@@ -1,0 +1,88 @@
+# GAN增强孪生网络配置文件
+# 实现生成-度量联合训练框架
+
+[dataset]
+# 数据集配置
+type = "small_multiclass"  # 使用多分类数据集测试小样本学习
+path = "./data/processed/small_multiclass_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数
+epochs = 20  # GAN训练需要更多轮数
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 6
+min_delta = 0.005
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# GAN增强的孪生网络模型
+
+[models.gan_siamese]
+module = "models.implementations.gan_siamese_model"
+class_name = "GANSiameseModel"
+enabled = true
+params = { d_model = 128, num_layers = 2, dropout = 0.1, siamese_emb_dim = 128, latent_dim = 100, discriminator_hidden = 256, generator_hidden = 256 }
+
+[gan]
+# GAN特定配置
+lambda_siamese = 0.5      # 孪生损失权重
+lambda_cls = 1.0          # 分类损失权重
+lambda_gan = 0.1          # GAN损失权重
+lambda_hard = 0.2         # 难负例损失权重
+positive_ratio = 0.6      # 正样本对比例
+difficulty_threshold = 0.7 # 难负例挖掘阈值
+latent_dim = 100          # 生成器噪声维度
+
+[siamese]
+# 孪生网络配置
+margin = 0.4              # 对比损失边界
+embedding_dim = 128       # 嵌入向量维度
+hard_negative_margin = 0.3 # 难负例margin
+
+[few_shot]
+# 小样本学习配置
+k_shot = 5                # 每个类别的支持集大小
+n_way = 5                 # 类别数
+num_episodes = 100        # 评估轮数
+support_set_size = 5      # 支持集大小
+similarity_threshold = 0.6 # 相似度阈值
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/gan_siamese_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "gan_siamese_experiment"
+seed = 42
+deterministic = true
+benchmark = false
