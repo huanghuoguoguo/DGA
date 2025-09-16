@@ -1,0 +1,79 @@
+# 孪生网络二分类测试配置文件
+# 使用二分类数据集验证孪生网络基础功能
+
+[dataset]
+# 数据集配置
+type = "small_binary"  # 使用二分类数据集，更容易验证效果
+path = "./data/processed/small_binary_dga_dataset.pkl"
+batch_size = 32
+shuffle = true
+num_workers = 0
+
+[training]
+# 训练参数
+epochs = 10  # 二分类任务，较少轮数即可
+learning_rate = 0.001
+weight_decay = 1e-4
+optimizer = "adam"
+scheduler = "plateau"
+
+# 早停机制
+early_stopping = true
+patience = 3
+min_delta = 0.01
+monitor = "val_accuracy"
+mode = "max"
+
+# 梯度裁剪
+grad_clip = 1.0
+
+[models]
+# 孪生网络增强模型
+
+[models.siamese_moe]
+module = "models.implementations.siamese_moe_model"
+class_name = "SiameseMoEModel"
+enabled = true
+params = { d_model = 128, num_layers = 2, num_experts = 4, top_k = 2, dropout = 0.1, siamese_emb_dim = 128, load_balance_weight = 0.01 }
+
+[siamese]
+# 孪生网络特定配置
+lambda_siamese = 0.3      # 降低孪生损失权重
+lambda_cls = 1.0          # 分类损失权重
+positive_ratio = 0.5      # 平衡正负样本对
+margin = 0.3              # 减小对比损失边界
+embedding_dim = 128       # 嵌入向量维度
+
+[logging]
+# 日志配置
+level = "INFO"
+format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+file = "./logs/siamese_binary_training.log"
+console = true
+
+[output]
+# 输出配置
+model_save_dir = "./results/models"
+results_save_dir = "./results/experiments"
+checkpoint_dir = "./results/checkpoints"
+save_best_only = true
+save_last = false
+
+[device]
+# 设备配置
+type = "auto"
+use_amp = false
+
+[experiment]
+# 实验配置
+name = "siamese_binary_experiment"
+seed = 42
+deterministic = true
+benchmark = false
+
+[few_shot]
+# 小样本学习配置
+support_set_size = 3      # 每个类别的支持集大小
+similarity_threshold = 0.6 # 相似度阈值
+max_new_classes = 2       # 最大新类别数
+update_frequency = 50     # 支持集更新频率
