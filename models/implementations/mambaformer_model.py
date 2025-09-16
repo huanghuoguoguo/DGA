@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 DGA Detection - MambaFormer模型实现
-结合Mamba状态空间模型和Transformer的混合架构
+结合Mamba状态空间模型和Transformer的混合架构（使用zeta实现）
 """
 
 import torch
@@ -14,6 +14,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from core.base_model import BaseModel
+from zeta.nn import MambaBlock
+from zeta.nn.attention.multiquery_attention import MultiQueryAttention
 
 
 class PositionalEncoding(nn.Module):
@@ -37,31 +39,20 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:x.size(1), :].transpose(0, 1)
 
 
-class MambaBlock(nn.Module):
-    """Mamba状态空间模型块"""
+class MambaWrapper(nn.Module):
+    """使用zeta提供的MambaBlock的包装器"""
     
     def __init__(self, d_model, d_state=16, dropout=0.1):
-        super(MambaBlock, self).__init__()
+        super(MambaWrapper, self).__init__()
         
-        self.d_model = d_model
-        self.d_state = d_state
-        
-        # 选择性扫描参数
-        self.input_proj = nn.Linear(d_model, d_state)
-        self.state_proj = nn.Linear(d_model, d_state)
-        self.output_proj = nn.Linear(d_state, d_model)
-        
-        # 门控机制
-        self.gate = nn.Linear(d_model, d_model)
-        self.gate_activation = nn.Sigmoid()
-        
-        # Delta参数（时间步长控制）
-        self.delta_proj = nn.Linear(d_model, d_state)
-        
-        # 状态转移矩阵（可学习）
-        self.A = nn.Parameter(torch.randn(d_state, d_state) * 0.01)
-        self.B = nn.Parameter(torch.randn(d_state, d_state) * 0.01)
-        self.C = nn.Parameter(torch.randn(d_state, d_model) * 0.01)
+        # 使用zeta提供的MambaBlock
+        self.mamba_block = MambaBlock(
+            dim=d_model,
+            depth=1,  # 单层
+            d_state=d_state,
+            expand=2,
+            d_conv=4
+        )
         
         # 归一化和dropout
         self.norm = nn.LayerNorm(d_model)
@@ -71,89 +62,19 @@ class MambaBlock(nn.Module):
         """
         x: (batch, seq_len, d_model)
         """
-        batch_size, seq_len, _ = x.shape
+        # 残差连接
         residual = x
-        
         x = self.norm(x)
         
-        # 选择性扫描机制
-        h = torch.zeros(batch_size, self.d_state, device=x.device, dtype=x.dtype)
-        outputs = []
-        
-        for t in range(seq_len):
-            x_t = x[:, t, :]  # (batch, d_model)
-            
-            # 计算选择性参数
-            delta = torch.sigmoid(self.delta_proj(x_t))  # (batch, d_state)
-            B_t = self.input_proj(x_t)  # (batch, d_state)
-            
-            # 状态更新（简化的选择性扫描）
-            A_scaled = self.A * delta.unsqueeze(-1)  # (batch, d_state, d_state)
-            h = torch.tanh(torch.matmul(h.unsqueeze(1), A_scaled).squeeze(1) + B_t)
-            
-            # 输出计算
-            y_t = torch.matmul(h.unsqueeze(1), self.C).squeeze(1)  # (batch, d_model)
-            
-            # 门控
-            gate_t = self.gate_activation(self.gate(x_t))
-            y_t = y_t * gate_t
-            
-            outputs.append(y_t)
-        
-        output = torch.stack(outputs, dim=1)  # (batch, seq_len, d_model)
+        # 使用zeta的MambaBlock
+        output = self.mamba_block(x)
         
         # 残差连接
         return self.dropout(output) + residual
 
 
-class TransformerBlock(nn.Module):
-    """标准Transformer块"""
-    
-    def __init__(self, d_model, n_heads=8, d_ff=None, dropout=0.1):
-        super(TransformerBlock, self).__init__()
-        
-        if d_ff is None:
-            d_ff = d_model * 4
-        
-        # 多头自注意力
-        self.self_attention = nn.MultiheadAttention(
-            d_model, n_heads, dropout=dropout, batch_first=True
-        )
-        
-        # 前馈网络
-        self.ffn = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_ff, d_model)
-        )
-        
-        # 归一化层
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        
-        self.dropout = nn.Dropout(dropout)
-    
-    def forward(self, x, mask=None):
-        """
-        x: (batch, seq_len, d_model)
-        mask: attention mask
-        """
-        # 自注意力 + 残差连接
-        x_norm = self.norm1(x)
-        attn_out, _ = self.self_attention(x_norm, x_norm, x_norm, attn_mask=mask)
-        x = x + self.dropout(attn_out)
-        
-        # 前馈网络 + 残差连接
-        x_norm = self.norm2(x)
-        ffn_out = self.ffn(x_norm)
-        x = x + self.dropout(ffn_out)
-        
-        return x
-
-
 class MambaFormerBlock(nn.Module):
-    """MambaFormer混合块"""
+    """MambaFormer混合块（使用zeta实现）"""
     
     def __init__(self, d_model, d_state=16, n_heads=8, dropout=0.1, fusion_type='parallel'):
         super(MambaFormerBlock, self).__init__()
@@ -161,8 +82,11 @@ class MambaFormerBlock(nn.Module):
         self.fusion_type = fusion_type
         
         # Mamba和Transformer组件
-        self.mamba_block = MambaBlock(d_model, d_state, dropout)
-        self.transformer_block = TransformerBlock(d_model, n_heads, dropout=dropout)
+        self.mamba_block = MambaWrapper(d_model, d_state, dropout)
+        self.attention_block = MultiQueryAttention(d_model, n_heads)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout_layer = nn.Dropout(dropout)
         
         if fusion_type == 'parallel':
             # 并行融合：需要fusion层
@@ -185,18 +109,25 @@ class MambaFormerBlock(nn.Module):
         x: (batch, seq_len, d_model)
         """
         if self.fusion_type == 'sequential':
-            # 序列化：先Mamba后Transformer
+            # 序列化：先Mamba后Attention
             x = self.mamba_block(x)
-            x = self.transformer_block(x, mask)
+            # 使用MultiQueryAttention
+            x_norm = self.norm1(x)
+            attn_out, _, _ = self.attention_block(x_norm)
+            x = x + self.dropout_layer(attn_out)
             return x
             
         elif self.fusion_type == 'parallel':
             # 并行：两个分支并行处理后融合
             mamba_out = self.mamba_block(x)
-            transformer_out = self.transformer_block(x, mask)
+            
+            # Attention分支
+            x_norm = self.norm1(x)
+            attn_out, _, _ = self.attention_block(x_norm)
+            attention_out = x + self.dropout_layer(attn_out)
             
             # 拼接并融合
-            combined = torch.cat([mamba_out, transformer_out], dim=-1)
+            combined = torch.cat([mamba_out, attention_out], dim=-1)
             fused = self.fusion(combined)
             
             return fused
@@ -204,15 +135,19 @@ class MambaFormerBlock(nn.Module):
         elif self.fusion_type == 'gated':
             # 门控融合：动态权重组合
             mamba_out = self.mamba_block(x)
-            transformer_out = self.transformer_block(x, mask)
+            
+            # Attention分支
+            x_norm = self.norm1(x)
+            attn_out, _, _ = self.attention_block(x_norm)
+            attention_out = x + self.dropout_layer(attn_out)
             
             # 计算门控权重
-            combined = torch.cat([mamba_out, transformer_out], dim=-1)
+            combined = torch.cat([mamba_out, attention_out], dim=-1)
             weights = self.gate(combined)  # (batch, seq_len, 2)
             
             # 加权融合
             fused = (weights[:, :, 0:1] * mamba_out + 
-                    weights[:, :, 1:2] * transformer_out)
+                    weights[:, :, 1:2] * attention_out)
             
             return fused
         

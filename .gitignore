@@ -1,2 +1,7 @@
 *.pyc
 /data/raw/*
+/data/result/*
+/data/models/*
+/data/training_logs/*
+/data/results/*
+/data/reports/*

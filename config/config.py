@@ -12,11 +12,11 @@ from typing import Dict, Any
 @dataclass
 class TrainingConfig:
     """训练配置"""
-    num_epochs: int = 20
-    batch_size: int = 32
+    num_epochs: int = 50  # 增加epoch数量以提高训练效果
+    batch_size: int = 128  # 增加批处理大小以提高GPU利用率
     learning_rate: float = 0.001
     weight_decay: float = 1e-4
-    patience: int = 5
+    patience: int = 10  # 增加patience以适应更长的训练
     random_seed: int = 42
 
 

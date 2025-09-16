@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-DGA Detection - Mamba模型实现（简化版）
+DGA Detection - Mamba模型实现（使用zeta提供的MambaBlock）
 """
 
 import torch
@@ -13,64 +13,35 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from core.base_model import BaseModel
+from zeta.nn import MambaBlock
 
 
-class MambaBlock(nn.Module):
-    """简化的Mamba块 - 使用RNN模拟状态空间模型"""
+class MambaWrapper(nn.Module):
+    """使用zeta提供的MambaBlock的包装器"""
     
-    def __init__(self, d_model, d_state=16, dropout=0.1):
-        super(MambaBlock, self).__init__()
+    def __init__(self, d_model, d_state=16, d_conv=4, expand=2, dropout=0.1):
+        super(MambaWrapper, self).__init__()
         
-        self.d_model = d_model
-        self.d_state = d_state
+        # 使用zeta提供的MambaBlock
+        self.mamba_block = MambaBlock(
+            dim=d_model,
+            depth=1,  # 单层
+            d_state=d_state,
+            expand=expand,
+            d_conv=d_conv
+        )
         
-        # 状态空间参数
-        self.state_proj = nn.Linear(d_model, d_state)
-        self.input_proj = nn.Linear(d_model, d_state)
-        self.output_proj = nn.Linear(d_state, d_model)
-        
-        # 门控机制
-        self.gate = nn.Linear(d_model, d_model)
-        
-        # 归一化
+        # 归一化和dropout
         self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
         
-        # 状态转移矩阵
-        self.state_transition = nn.Parameter(torch.randn(d_state, d_state) * 0.01)
-        
     def forward(self, x):
-        batch_size, seq_len, _ = x.shape
-        
         # 残差连接
         residual = x
         x = self.norm(x)
         
-        # 初始化隐藏状态
-        h = torch.zeros(batch_size, self.d_state, device=x.device)
-        
-        outputs = []
-        for t in range(seq_len):
-            x_t = x[:, t, :]  # (batch, d_model)
-            
-            # 状态更新
-            h_proj = self.state_proj(x_t)  # (batch, d_state)
-            x_proj = self.input_proj(x_t)  # (batch, d_state)
-            
-            # 简化的状态空间更新
-            h = torch.tanh(h @ self.state_transition.T + h_proj + x_proj)
-            
-            # 输出投影
-            output_t = self.output_proj(h)  # (batch, d_model)
-            
-            # 门控
-            gate_t = torch.sigmoid(self.gate(x_t))
-            output_t = output_t * gate_t
-            
-            outputs.append(output_t)
-        
-        # 拼接所有时间步的输出
-        output = torch.stack(outputs, dim=1)  # (batch, seq_len, d_model)
+        # 使用zeta的MambaBlock
+        output = self.mamba_block(x)
         
         # 残差连接和dropout
         output = self.dropout(output) + residual
@@ -90,7 +61,7 @@ class MambaModel(BaseModel):
         
         # Mamba层
         self.layers = nn.ModuleList([
-            MambaBlock(d_model, d_state, dropout)
+            MambaWrapper(d_model, d_state, dropout=dropout)
             for _ in range(n_layers)
         ])
         
