@@ -13,26 +13,59 @@ from typing import Tuple, Optional
 
 
 class HomogeneousExpert(nn.Module):
-    """同构专家网络 - 使用相同的架构"""
+    """同构专家网络 - 使用BiLSTM+Attention架构"""
     
-    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1):
+    def __init__(self, vocab_size: int, d_model: int, hidden_size: int = None, 
+                 num_layers: int = 2, dropout: float = 0.1):
         super().__init__()
         
-        self.expert_net = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_ff, d_model),
-            nn.Dropout(dropout)
+        if hidden_size is None:
+            hidden_size = d_model // 2
+        
+        self.d_model = d_model
+        self.hidden_size = hidden_size
+        
+        # 嵌入层
+        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=0)
+        
+        # BiLSTM层
+        self.lstm = nn.LSTM(
+            d_model, hidden_size, num_layers,
+            batch_first=True, bidirectional=True, dropout=dropout
         )
+        
+        # 注意力机制
+        self.attention = nn.Linear(hidden_size * 2, 1)
+        
+        # 输出投影层
+        self.output_proj = nn.Linear(hidden_size * 2, d_model)
         
         # 专家特化参数
         self.expert_bias = nn.Parameter(torch.randn(d_model) * 0.01)
         self.expert_scale = nn.Parameter(torch.ones(d_model))
         
+        self.dropout = nn.Dropout(dropout)
+        
     def forward(self, x):
-        # 基础变换
-        output = self.expert_net(x)
+        """
+        x: (batch_size, seq_len) - 输入序列的token ids
+        返回: (batch_size, d_model) - 专家输出
+        """
+        # 嵌入 (batch, seq_len, d_model)
+        embedded = self.embedding(x)
+        embedded = self.dropout(embedded)
+        
+        # BiLSTM (batch, seq_len, hidden_size*2)
+        lstm_out, _ = self.lstm(embedded)
+        
+        # 注意力权重 (batch, seq_len, 1)
+        attention_weights = F.softmax(self.attention(lstm_out), dim=1)
+        
+        # 加权求和 (batch, hidden_size*2)
+        weighted_output = torch.sum(lstm_out * attention_weights, dim=1)
+        
+        # 投影到d_model维度 (batch, d_model)
+        output = self.output_proj(weighted_output)
         
         # 专家特化
         output = output * self.expert_scale + self.expert_bias
@@ -137,24 +170,23 @@ class GatingNetwork(nn.Module):
 class HomogeneousMoELayer(nn.Module):
     """同构MoE层"""
     
-    def __init__(self, d_model: int, num_experts: int = 4, d_ff: int = None,
+    def __init__(self, vocab_size: int, d_model: int, num_experts: int = 4, 
                  top_k: int = 2, dropout: float = 0.1, load_balance_weight: float = 0.01):
         super().__init__()
-        
-        if d_ff is None:
-            d_ff = d_model * 4
         
         self.num_experts = num_experts
         self.top_k = top_k
         self.load_balance_weight = load_balance_weight
+        self.d_model = d_model
         
-        # 创建同构专家
+        # 创建同构专家 - 每个专家都是BiLSTM+Attention
         self.experts = nn.ModuleList([
-            HomogeneousExpert(d_model, d_ff, dropout)
+            HomogeneousExpert(vocab_size, d_model, dropout=dropout)
             for _ in range(num_experts)
         ])
         
-        # 门控网络
+        # 门控网络 - 需要先将输入转换为特征表示
+        self.input_embedding = nn.Embedding(vocab_size, d_model, padding_idx=0)
         self.gate = GatingNetwork(d_model, num_experts, top_k, dropout)
         
         # 层归一化
@@ -162,39 +194,39 @@ class HomogeneousMoELayer(nn.Module):
         
     def forward(self, x):
         """
-        x: (batch_size, seq_len, d_model)
+        x: (batch_size, seq_len) - token序列
         """
-        batch_size, seq_len, d_model = x.shape
-        x_flat = x.view(-1, d_model)  # (batch_size * seq_len, d_model)
+        batch_size, seq_len = x.shape
+        
+        # 将输入转换为特征表示用于门控网络
+        embedded = self.input_embedding(x)  # (batch_size, seq_len, d_model)
+        # 全局平均池化得到序列级别的表示
+        pooled_features = torch.mean(embedded, dim=1)  # (batch_size, d_model)
         
         # 门控选择
-        gates, indices, load_loss = self.gate(x_flat, self.training)
-        
-        # 初始化输出
-        output = torch.zeros_like(x_flat)
+        gates, indices, load_loss = self.gate(pooled_features, self.training)
         
         # 批量处理所有专家
         expert_outputs = []
         for expert in self.experts:
-            expert_out = expert(x_flat)  # (batch_size * seq_len, d_model)
+            expert_out = expert(x)  # (batch_size, d_model)
             expert_outputs.append(expert_out)
         
         # 堆叠专家输出
-        expert_outputs = torch.stack(expert_outputs, dim=1)  # (batch_size * seq_len, num_experts, d_model)
+        expert_outputs = torch.stack(expert_outputs, dim=1)  # (batch_size, num_experts, d_model)
         
         # 选择top-k专家输出并加权求和
-        output = torch.zeros_like(x_flat)
+        output = torch.zeros(batch_size, self.d_model, device=x.device)
         for k in range(self.top_k):
-            expert_idx = indices[:, k]  # (batch_size * seq_len,)
-            gate_weight = gates[:, k]   # (batch_size * seq_len,)
+            expert_idx = indices[:, k]  # (batch_size,)
+            gate_weight = gates[:, k]   # (batch_size,)
             
             # 选择对应专家的输出
-            selected_output = expert_outputs[torch.arange(x_flat.size(0)), expert_idx]  # (batch_size * seq_len, d_model)
+            selected_output = expert_outputs[torch.arange(batch_size), expert_idx]  # (batch_size, d_model)
             output += gate_weight.unsqueeze(-1) * selected_output
         
         # 残差连接和层归一化
-        output = output.view(batch_size, seq_len, d_model)
-        output = self.norm(x + output)
+        output = self.norm(pooled_features + output)
         
         return output, load_loss
 
@@ -213,14 +245,10 @@ class HomogeneousMoEModel(nn.Module):
         self.num_experts = num_experts
         self.load_balance_weight = load_balance_weight
         
-        # 嵌入层
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.pos_encoding = nn.Parameter(torch.randn(max_length, d_model) * 0.02)
-        self.dropout = nn.Dropout(dropout)
-        
         # MoE层
         self.moe_layers = nn.ModuleList([
             HomogeneousMoELayer(
+                vocab_size=vocab_size,
                 d_model=d_model,
                 num_experts=num_experts,
                 top_k=top_k,
@@ -256,27 +284,24 @@ class HomogeneousMoEModel(nn.Module):
     def forward(self, x):
         batch_size, seq_len = x.shape
         
-        # 嵌入和位置编码
-        x = self.embedding(x)  # (batch_size, seq_len, d_model)
-        
-        # 添加位置编码
-        if seq_len <= self.pos_encoding.size(0):
-            x = x + self.pos_encoding[:seq_len].unsqueeze(0)
-        else:
-            # 如果序列太长，截断位置编码
-            x = x + self.pos_encoding.unsqueeze(0)
-        
-        x = self.dropout(x)
-        
-        # 通过MoE层
+        # 通过MoE层 - 每层直接处理token输入
         total_load_loss = 0.0
-        for moe_layer in self.moe_layers:
-            x, load_loss = moe_layer(x)
-            total_load_loss += load_loss
+        current_input = x  # 保持token格式
         
-        # 全局平均池化
-        x = self.norm(x)
-        x = x.mean(dim=1)  # (batch_size, d_model)
+        for i, moe_layer in enumerate(self.moe_layers):
+            if i == 0:
+                # 第一层直接处理token输入
+                layer_output, load_loss = moe_layer(current_input)
+            else:
+                # 后续层需要将特征表示转换回token格式进行处理
+                # 这里我们使用第一层的输出作为所有后续层的输入
+                layer_output, load_loss = moe_layer(current_input)
+            
+            total_load_loss += load_loss
+            # 保持输出格式为特征向量，但输入仍为token
+        
+        # 最终输出已经是特征向量格式 (batch_size, d_model)
+        x = self.norm(layer_output)
         
         # 分类
         logits = self.classifier(x)

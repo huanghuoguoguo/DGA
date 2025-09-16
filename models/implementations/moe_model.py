@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from core.base_model import BaseModel
 from .cnn_model import CNNModel
-from .lstm_model import LSTMModel
+from .simple_lstm_model import SimpleLSTMModel
 
 
 class MoEModel(BaseModel):

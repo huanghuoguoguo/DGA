@@ -8,6 +8,61 @@ DGA Detection - 主入口脚本
 import argparse
 import sys
 import os
+import time
+from datetime import datetime
+import json
+import torch
+import numpy as np
+from pathlib import Path
+
+
+class EarlyStopping:
+    """早停机制类"""
+    
+    def __init__(self, patience=7, min_delta=0.001, restore_best_weights=True, mode='max'):
+        """
+        Args:
+            patience: 等待改善的轮数
+            min_delta: 最小改善阈值
+            restore_best_weights: 是否恢复最佳权重
+            mode: 'max' 表示指标越大越好(如准确率), 'min' 表示指标越小越好(如损失)
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.mode = mode
+        
+        self.best_score = None
+        self.counter = 0
+        self.best_weights = None
+        self.early_stop = False
+        
+        if mode == 'max':
+            self.monitor_op = lambda current, best: current > best + min_delta
+            self.best_score = float('-inf')
+        else:
+            self.monitor_op = lambda current, best: current < best - min_delta
+            self.best_score = float('inf')
+    
+    def __call__(self, score, model):
+        """检查是否应该早停"""
+        if self.monitor_op(score, self.best_score):
+            self.best_score = score
+            self.counter = 0
+            if self.restore_best_weights:
+                self.best_weights = model.state_dict().copy()
+        else:
+            self.counter += 1
+            
+        if self.counter >= self.patience:
+            self.early_stop = True
+            if self.restore_best_weights and self.best_weights is not None:
+                model.load_state_dict(self.best_weights)
+                print(f"早停触发，恢复最佳权重 (最佳分数: {self.best_score:.4f})")
+            else:
+                print(f"早停触发 (最佳分数: {self.best_score:.4f})")
+        
+        return self.early_stop
 
 def main():
     """主函数 - 统一入口"""

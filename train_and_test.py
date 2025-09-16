@@ -19,6 +19,55 @@ from typing import Dict, Any, List, Tuple
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
 
+
+class EarlyStopping:
+    """早停机制类"""
+    
+    def __init__(self, patience=7, min_delta=0.001, restore_best_weights=True, mode='max'):
+        """
+        Args:
+            patience: 等待改善的轮数
+            min_delta: 最小改善阈值
+            restore_best_weights: 是否恢复最佳权重
+            mode: 'max' 表示指标越大越好(如准确率), 'min' 表示指标越小越好(如损失)
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.restore_best_weights = restore_best_weights
+        self.mode = mode
+        
+        self.best_score = None
+        self.counter = 0
+        self.best_weights = None
+        self.early_stop = False
+        
+        if mode == 'max':
+            self.monitor_op = lambda current, best: current > best + min_delta
+            self.best_score = float('-inf')
+        else:
+            self.monitor_op = lambda current, best: current < best - min_delta
+            self.best_score = float('inf')
+    
+    def __call__(self, score, model):
+        """检查是否应该早停"""
+        if self.monitor_op(score, self.best_score):
+            self.best_score = score
+            self.counter = 0
+            if self.restore_best_weights:
+                self.best_weights = model.state_dict().copy()
+        else:
+            self.counter += 1
+            
+        if self.counter >= self.patience:
+            self.early_stop = True
+            if self.restore_best_weights and self.best_weights is not None:
+                model.load_state_dict(self.best_weights)
+                print(f"早停触发，恢复最佳权重 (最佳分数: {self.best_score:.4f})")
+            else:
+                print(f"早停触发 (最佳分数: {self.best_score:.4f})")
+        
+        return self.early_stop
+
 # 导入项目模块
 from core.dataset import create_data_loaders
 # 只导入基础模型，避免依赖问题
@@ -135,17 +184,26 @@ class ModelTrainer:
             optimizer, mode='min', patience=config.training.patience//2, factor=0.5
         )
         
+        # 早停机制
+        early_stopping = EarlyStopping(
+            patience=config.training.patience,
+            min_delta=0.001,
+            restore_best_weights=True,
+            mode='max'  # 监控验证准确率，越大越好
+        )
+        
         # 训练历史
         history = {
             'train_loss': [],
             'train_acc': [],
             'val_loss': [],
             'val_acc': [],
-            'epoch_times': []
+            'epoch_times': [],
+            'early_stopped': False,
+            'stopped_epoch': None
         }
         
         best_val_acc = 0.0
-        patience_counter = 0
         
         for epoch in range(num_epochs):
             epoch_start_time = time.time()
@@ -260,18 +318,17 @@ class ModelTrainer:
             # 保存最佳模型
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                patience_counter = 0
                 
                 # 保存模型
                 model_path = f'./data/models/best_{model_name}_model.pth'
                 torch.save(model.state_dict(), model_path)
                 print(f'  ✓ 保存最佳模型: {model_path} (Val Acc: {val_acc:.2f}%)')
-            else:
-                patience_counter += 1
             
-            # 早停
-            if patience_counter >= config.training.patience:
+            # 早停检查
+            if early_stopping(val_acc, model):
                 print(f'  早停触发 (patience={config.training.patience})')
+                history['early_stopped'] = True
+                history['stopped_epoch'] = epoch + 1
                 break
             
             print('-' * 60)
